@@ -1,0 +1,12 @@
+project: "test-spatial"
+data:
+  input: "/home/user/desktop/data"
+  output: "/home/user/desktop/data/output"
+algo:
+  cellpose:
+    one: "../utils/cellpose_default_1_Zlevel.json"
+    two: "../utils/cellpose_default_3_Zlevel.json"
+    three: "../utils/cellpose_default_3_Zlevel_nuclei_only.json"
+  watershed: "../utils/watershed_default.json"
+threads: 4
+  # - img-vzg: '...'
