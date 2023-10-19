@@ -2,8 +2,8 @@
 A snakemake pipeline to perform cell segmentation on MERFISH spatial transcriptomics data.
 
 ## Fetaures
-This snakemake pipeline is a wrapper around the [VizGen Post-processing Tool][https://vizgen.github.io/vizgen-postprocessing/index.html],
-to perfrom cell segmentation on spatial transcriptomics
+This snakemake pipeline is a wrapper around the [VizGen Post-processing Tool](https://vizgen.github.io/vizgen-postprocessing/index.html),
+to perfrom cell segmentation on MERFISH spatial transcriptomics data.
 
 ### Run test on pipeline
 
