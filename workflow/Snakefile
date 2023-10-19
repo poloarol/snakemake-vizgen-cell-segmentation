@@ -1,0 +1,133 @@
+configfile: "../config/config.yml"
+
+
+project = config['project']
+raw_data_path = config['data']['input']
+outpath = config['data']['output']
+
+dirnames = [name for name in os.listdir(raw_data_path) if not os.path.isfile(name) and "experimental" not in name]
+
+segmentation_targets = []
+
+algorithm = ...
+
+if config['algorithm'] == 'watershed':
+    algorithm = config['algo']['watershed']
+else:
+    if model == 'one':
+        algorithm = config['algo']['one']
+    elif model == 'two':
+        algorithm = config['algo']['two']
+    else:
+        algorithm = config['algo']['three']
+
+
+for dirname in dirnames:
+    micron = expand("{outpath}/{dirname}/cellpose_micron_space.parquet", outpath=outpath, dirname=dirname)
+    mosaic = expand("{outpath}/{dirname}/cellpose_mosaic_space.parquet", outpath=outpath, dirname=dirname)
+    specs = expand("{outpath}/{dirname}/segmentation_specification.json", outpath=outpath, dirname=dirname)
+    tiles = expand("{outpath}/{dirname}/results_tiles/{num}.parquet", outpath=outpath, dirname=dirname, num=[0,1,2])
+    cell_gene = expand("{outpath}/{dirname}/cell_by_gene.csv", outpath=outpath, dirname=dirname)
+    detected_transcripts = expand("{outpath}/{dirname}/detected_transcripts.csv", outpath=outpath, dirname=dirname)
+    cell_metadata = expand("{outpath}/{dirname}/cell_metadata.csv", outpath=outpath, dirname=dirname)
+    sum_signals = expand("{outpath}/{dirname}/sum_signals.csv", outpath=outpath, dirname=dirname)
+
+    segmentation_targets.extend(micron)
+    segmentation_targets.extend(mosaic)
+    segmentation_targets.extend(specs)
+    # segmentation_targets.extend(tiles)
+    segmentation_targets.extend(cell_gene)
+    segmentation_targets.extend(detected_transcripts)
+    segmentation_targets.extend(cell_metadata)
+    segmentation_targets.extend(sum_signals)
+
+
+rule all:
+    input:
+        segmentation_targets
+
+
+rule identify_cell_boundaries:
+    input:
+        images=expand('{raw_data_path}/{dirnames}/images', raw_data_path=raw_data_path, dirnames=dirnames),
+        transform_file=expand('{raw_data_path}/{dirnames}/images/micron_to_mosaic_pixel_transform.csv', raw_data_path=raw_data_path, dirnames=dirnames)
+    output:
+        micron = "{outpath}/{dirnames}/cellpose_micron_space.parquet",
+        mosaic = "{outpath}/{dirnames}/cellpose_mosaic_space.parquet",
+        specs =  "{outpath}/{dirnames}/segmentation_specification.json",
+        # tiles = dir("{outpath}/{dirname}/results_tiles")
+    params:
+        outdir = expand("{outpath}/{dirnames}", outpath=outpath, dirnames=dirnames),
+        algorithm = algorithm
+    threads: config['threads']
+    conda: "envs/vpt.cellpose.yml"
+    shell:
+        '''
+        #!/bin/bash VPT
+
+        vpt --verbose --processes {threads} run-segmentation \
+            --segmentation-algorithm {params.algorithm}\
+            --input-images={input.images}/mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif \
+            --input-micron-to-mosaic {input.transform_file} \
+            --output-path {params.outdir} \
+            --tile-size 2400 \
+            --tile-overlap 200
+        '''
+
+
+rule partition_transcripts_cells:
+    input:
+        micron = expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
+        transcripts = expand("{raw_data_path}/{dirnames}/detected_transcripts_S1R1.csv", raw_data_path=raw_data_path, dirnames=dirnames)
+    output:
+        cell_by_gene = "{outpath}/{dirnames}/cell_by_gene.csv",
+        transcripts = "{outpath}/{dirnames}/detected_transcripts.csv"
+    conda: "envs/vpt.cellpose.yml"
+    shell:
+        '''
+        #!/bin/bash VPT
+
+        vpt --verbose partition-transcripts \
+            --input-boundaries {input.micron} \
+            --input-transcripts {input.transcripts} \
+            --output-entity-by-gene {output.cell_by_gene} \
+            --output-transcripts {output.transcripts}
+        '''
+
+
+rule calc_cell_metadata:
+    input:
+        micron = expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
+        cell_by_gene = expand("{outpath}/{dirnames}/cell_by_gene.csv", outpath=outpath, dirnames=dirnames),
+    output:
+        metadata = "{outpath}/{dirnames}/cell_metadata.csv",
+    conda: "envs/vpt.cellpose.yml"
+    shell:
+        '''
+        #!/bin/bash VPT
+
+        vpt --verbose derive-entity-metadata \
+            --input-boundaries {input.micron} \
+            --input-entity-by-gene {input.cell_by_gene} \
+            --output-metadata {output.metadata}
+        '''
+
+
+rule calc_cell_sum_signal:
+    input:
+        images=expand('{raw_data_path}/{dirnames}/images', raw_data_path=raw_data_path, dirnames=dirnames),
+        micron = expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
+        transform_file=expand('{raw_data_path}/{dirnames}/images/micron_to_mosaic_pixel_transform.csv', raw_data_path=raw_data_path, dirnames=dirnames),
+    output:
+        signals = "{outpath}/{dirnames}/sum_signals.csv"
+    conda: "envs/vpt.cellpose.yml"
+    shell:
+        '''
+        #!/bin/bash VPT
+        
+        vpt --verbose sum-signals \
+            --input-images={input.images}/mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif \
+            --input-boundaries {input.micron}, \
+            --input-micron-to-mosaic {input.transform_file} \
+            --output-csv {output.signals}
+        '''
