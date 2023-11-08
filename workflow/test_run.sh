@@ -3,6 +3,4 @@
 algorithm=$1
 model=$2
 
-snakemake -n \
-    --config algorithm=${algorithm} \
-    --use-conda --conda-frontend conda \
+snakemake -n --config algorithm=${algorithm} model=${model} --use-conda --conda-frontend conda
