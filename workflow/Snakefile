@@ -3,7 +3,7 @@ configfile: "../config/config.yml"
 
 raw_data_path = config['data']['input']
 
-dirnames = [name for name in os.listdir(raw_data_path) if not os.path.isfile(name) and "experimental" not in name]
+dirnames = [name for name in os.listdir(raw_data_path) if not os.path.isfile(name) and "output" not in name]
 
 segmentation_targets = []
 
@@ -27,7 +27,7 @@ project = config['project']
 if config['algorithm'] == 'cellpose':
     outpath = f"{config['data']['output']}/cellpose_{config['model']}"
 else:
-    outpath = f"{config['data']['output']}/{config['algorithm']}/"
+    outpath = f"{config['data']['output']}/{config['algorithm']}"
 
 
 for dirname in dirnames:
@@ -47,7 +47,7 @@ for dirname in dirnames:
     segmentation_targets.extend(cell_gene)
     segmentation_targets.extend(detected_transcripts)
     segmentation_targets.extend(cell_metadata)
-    segmentation_targets.extend(sum_signals)
+    # segmentation_targets.extend(sum_signals)e
 
 
 rule all:
@@ -74,7 +74,7 @@ rule identify_cell_boundaries:
 
         vpt --verbose --processes {threads} run-segmentation \
             --segmentation-algorithm {params.algorithm}\
-            --input-images={input.images}/mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif \
+            --input-images='{input.images}/mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif' \
             --input-micron-to-mosaic {input.transform_file} \
             --output-path {params.outdir} \
             --tile-size 2400 \
@@ -121,7 +121,7 @@ rule calc_cell_metadata:
 rule calc_cell_sum_signal:
     input:
         images=expand('{raw_data_path}/{dirnames}/images', raw_data_path=raw_data_path, dirnames=dirnames),
-        micron = expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
+        micron=expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
         transform_file=expand('{raw_data_path}/{dirnames}/images/micron_to_mosaic_pixel_transform.csv', raw_data_path=raw_data_path, dirnames=dirnames),
     output:
         signals = "{outpath}/{dirnames}/sum_signals.csv"
@@ -130,7 +130,7 @@ rule calc_cell_sum_signal:
         #!/bin/bash VPT
         
         vpt --verbose sum-signals \
-            --input-images={input.images}/mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif \
+            --input-images='{input.images}/mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif' \
             --input-boundaries {input.micron}, \
             --input-micron-to-mosaic {input.transform_file} \
             --output-csv {output.signals}
