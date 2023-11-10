@@ -50,6 +50,8 @@ for dirname in dirnames:
     # segmentation_targets.extend(sum_signals)e
 
 
+# containerized: 'docker://vizgen-segmentation'
+
 rule all:
     input:
         segmentation_targets
