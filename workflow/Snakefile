@@ -1,4 +1,6 @@
 
+from datetime import datetime
+
 configfile: "../config/config.yml"
 
 raw_data_path = config['data']['input']
@@ -30,6 +32,13 @@ else:
     outpath = f"{config['data']['output']}/{config['algorithm']}"
 
 
+# Get the current date and time
+current_datetime = datetime.now()
+
+# Format the date and time as yearmonthday_hour_updated
+formatted_datetime = current_datetime.strftime("%Y%m%d_%H_%M_%S")
+
+
 for dirname in dirnames:
     micron = expand("{outpath}/{dirname}/cellpose_micron_space.parquet", outpath=outpath, dirname=dirname)
     mosaic = expand("{outpath}/{dirname}/cellpose_mosaic_space.parquet", outpath=outpath, dirname=dirname)
@@ -39,6 +48,7 @@ for dirname in dirnames:
     detected_transcripts = expand("{outpath}/{dirname}/detected_transcripts.csv", outpath=outpath, dirname=dirname)
     cell_metadata = expand("{outpath}/{dirname}/cell_metadata.csv", outpath=outpath, dirname=dirname)
     sum_signals = expand("{outpath}/{dirname}/sum_signals.csv", outpath=outpath, dirname=dirname)
+    updated_vgz = expand("{outpath}/{dirname}/{formatted_datetime}_updated.vgz", outpath=outpath, dirname=dirname, formatted_datetime=formatted_datetime)
 
     segmentation_targets.extend(micron)
     segmentation_targets.extend(mosaic)
@@ -47,7 +57,7 @@ for dirname in dirnames:
     segmentation_targets.extend(cell_gene)
     segmentation_targets.extend(detected_transcripts)
     segmentation_targets.extend(cell_metadata)
-    # segmentation_targets.extend(sum_signals)e
+    # segmentation_targets.extend(updated_vgz)
 
 
 # containerized: 'docker://vizgen-segmentation'
@@ -136,4 +146,26 @@ rule calc_cell_sum_signal:
             --input-boundaries {input.micron}, \
             --input-micron-to-mosaic {input.transform_file} \
             --output-csv {output.signals}
+        '''
+
+
+rule update_vizgen:
+    input:
+        vzg = config['file'],
+        micron=expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
+        cell_by_gene = expand("{outpath}/{dirnames}/cell_by_gene.csv", outpath=outpath, dirnames=dirnames),
+        metadata = "{outpath}/{dirnames}/cell_metadata.csv"
+    output:
+        vzg = "{outpath}/{dirname}/{formatted_datetime}_updated.vgz"
+    threads: config['threads']
+    shell:
+        '''
+        #!/bin/bash VPT
+
+        vpt --verbose --processes {threads} update-vzg \
+            --input-vzg {input.vzg} \
+            --input-boundaries {input.micron} \
+            --input-entity-by-gene {input.cell_by_gene} \
+            --input-metadata {input.metadata} \
+            --output-vzg {output}
         '''

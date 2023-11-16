@@ -6,7 +6,7 @@ This snakemake pipeline is a wrapper around the [VizGen Post-processing Tool](ht
 to perfrom cell segmentation on MERFISH spatial transcriptomics data.
 
 ### Build Docker image
-- Create image: `docker build vizgen-segmentation .`
+- Create image: `docker build -t vizgen-segmentation .`
 - Test image: `docker run vizgen-segmentation`
 - Mount disk: `docker run --rm -it --entrypoint /bin/bash -v <path-to-folder>:<docker-folder-name> vizgen-segmentation`
 
