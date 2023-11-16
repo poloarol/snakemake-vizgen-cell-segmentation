@@ -2,7 +2,7 @@
 
 algorithm=$1
 model=$2
-# vgz_file=$3
+vgz_file=$3
 
 snakemake --config algorithm=${algorithm} model=${model} \
     --cores 32 --latency-wait 600 \
@@ -20,6 +20,6 @@ snakemake --config algorithm=${algorithm} model=${model} \
 
 sleep 30
 
-# snakemake -n --config algorithm=${algorithm} model=${model} file=${vgz_file}\
-#     --allowed-rules update_vizgen \
-#     --cores 1
+snakemake -n --config algorithm=${algorithm} model=${model} file=${vgz_file} \
+    --allowed-rules update_vizgen \
+    --cores 1

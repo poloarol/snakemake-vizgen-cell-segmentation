@@ -19,11 +19,11 @@ to perfrom cell segmentation on MERFISH spatial transcriptomics data.
 
 ### Run the pipeline with desired VPT model
 
-- Using watershed segmentation algorithm: `bash run.sh watershed zero`
+- Using watershed segmentation algorithm: `bash run.sh watershed zero <vgz-file-name>`
 - Using cellpose model for segmentation:
-    - experimental model nuclei-only: `bash run.sh cellpose three`
-    - experimental model cytoplasm with nuclei Z3: `bash run.sh cellpose two`
-    - experimental model cytoplasm with nuclei Z3: `bash run.sh cellpose one`
+    - experimental model nuclei-only: `bash run.sh cellpose three `
+    - experimental model cytoplasm with nuclei Z3: `bash run.sh cellpose two <vgz-file-name>`
+    - experimental model cytoplasm with nuclei Z3: `bash run.sh cellpose one <vgz-file-name>`
 
 ### Structure of output
     <path-to-output>\
@@ -39,3 +39,4 @@ to perfrom cell segmentation on MERFISH spatial transcriptomics data.
     |       detected_transcripts.csv
     |       cell_metadata.csv
     |       sum_signals.csv
+    |       <yy_mm_dd_hh_mm_ss_updated.vgz>

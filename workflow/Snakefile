@@ -57,7 +57,7 @@ for dirname in dirnames:
     segmentation_targets.extend(cell_gene)
     segmentation_targets.extend(detected_transcripts)
     segmentation_targets.extend(cell_metadata)
-    # segmentation_targets.extend(updated_vgz)
+    segmentation_targets.extend(updated_vgz)
 
 
 # containerized: 'docker://vizgen-segmentation'
@@ -151,12 +151,12 @@ rule calc_cell_sum_signal:
 
 rule update_vizgen:
     input:
-        vzg = config['file'],
-        micron=expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
-        cell_by_gene = expand("{outpath}/{dirnames}/cell_by_gene.csv", outpath=outpath, dirnames=dirnames),
-        metadata = "{outpath}/{dirnames}/cell_metadata.csv"
+        vzg=expand("{raw_data_path}/{dirnames}/{filename}", raw_data_path=raw_data_path, dirnames=dirnames, filename=config['file']),
+        micron="{outpath}/{dirnames}/cellpose_micron_space.parquet",
+        cell_by_gene="{outpath}/{dirnames}/cell_by_gene.csv",
+        metadata="{outpath}/{dirnames}/cell_metadata.csv"
     output:
-        vzg = "{outpath}/{dirname}/{formatted_datetime}_updated.vgz"
+        vzg = "{outpath}/{dirnames}/{formatted_datetime}_updated.vgz"
     threads: config['threads']
     shell:
         '''
