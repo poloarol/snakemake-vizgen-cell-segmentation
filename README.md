@@ -25,6 +25,52 @@ to perfrom cell segmentation on MERFISH spatial transcriptomics data.
     - experimental model cytoplasm with nuclei Z3: `bash run.sh cellpose two <vgz-file-name>`
     - experimental model cytoplasm with nuclei Z3: `bash run.sh cellpose one <vgz-file-name>`
 
+
+### Rules input/output
+[X] rule identify_cell_boundaries:
+    - input
+        - <path-to-raw-sample>\images\*.tif
+        - <path-to-raw-samples>\images\micron_to_mosaic_pixel_transform.csv
+    - output
+        - <path-to-output-folder>\cellpose_micron_space.parquet
+        - <path-to-output-folder>\cellpose_mosaic_space.parquet
+        - <path-to-output-folder>\segmentation_specification.json
+        - <path-to-output-folder>\results_tiles\0.parquet
+        - <path-to-output-folder>\results_tiles\1.parquet
+        - <path-to-output-folder>\results_tiles\2.parquet
+
+[X] rule partition_transcripts_cells:
+    - input:
+        - <path-to-raw-samples>\detected_transcripts.csv
+        - <path-to-output-folder>\cellpose_micron_space.parquet
+    - output:
+        - <path-to-output-folder>\cell_by_gene.csv
+        - <path-to-output-folder>\detected_transcripts.csv
+
+[X] rule calc_cell_metadata:
+    - input:
+        - <path-to-output-folder>\cellpose_micron_space.parquet
+        - <path-to-output-folder>\cell_by_gene.csv
+    - output:
+        - <path-to-output-folder>\cell_metadata.csv
+
+[X] rule calc_cell_sum_signal:
+    - input:
+        - <path-to-raw-sample>\images\*.tif
+        - <path-to-raw-samples>\images\micron_to_mosaic_pixel_transform.csv
+        - <path-to-output-folder>\cellpose_micron_space.parquet
+    - output:
+        - <path-to-output-folder>\sum_signal.csv
+
+[X] rule update_vizgen:
+    - input:
+        - <path-to-output-folder>\cellpose_micron_space.parquet
+        - <path-to-output-folder>\cell_by_gene.csv
+        - <path-to-output-folder>\cell_metadata.csv
+        - <path-to-raw-sample>\<project_name>-vizgen-file.vgz
+    - output:
+        - <path-to-output-folder>\yy-mm-dd_<project_name>updated.vgz
+
 ### Structure of output
     <path-to-output>\
     |   <sample-name>\
@@ -39,4 +85,4 @@ to perfrom cell segmentation on MERFISH spatial transcriptomics data.
     |       detected_transcripts.csv
     |       cell_metadata.csv
     |       sum_signals.csv
-    |       <yy_mm_dd_hh_mm_ss_updated.vgz>
+    |       <yy_mm_dd_hh_mm_ss_<project_name>_updated.vgz>

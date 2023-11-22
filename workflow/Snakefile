@@ -74,7 +74,7 @@ rule identify_cell_boundaries:
     output:
         micron = "{outpath}/{dirnames}/cellpose_micron_space.parquet",
         mosaic = "{outpath}/{dirnames}/cellpose_mosaic_space.parquet",
-        specs =  "{outpath}/{dirnames}/segmentation_specification.json",
+        specs =  "{outpath}/{dirnames}/segmentation_specification.json"
         # tiles = dir("{outpath}/{dirnames}/results_tiles")
     params:
         outdir = expand("{outpath}/{dirnames}", outpath=outpath, dirnames=dirnames),
