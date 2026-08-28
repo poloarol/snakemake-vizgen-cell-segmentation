@@ -3,24 +3,33 @@
 A Snakemake pipeline for performing cell segmentation on MERFISH spatial transcriptomics data.
 
 ```text
-MERFISH / Vizgen data
-          │
-          ▼
-identify_cell_boundaries
-          │
-          ▼
-partition_transcripts_cells
-          │
-          ├──────────────────────┐
-          ▼                      ▼
-calc_cell_metadata      calc_cell_sum_signal
-          │                      │
-          └───────────┬──────────┘
-                      ▼
-                update_vizgen
-                      │
-                      ▼
-              updated .vgz file
+              CONFIGURATION
+                    │
+                    ▼
+          Select segmentation model
+                    │
+                    ▼
+┌──────────────────────────────────────────┐
+│              FOR EACH SAMPLE             │
+│                                          │
+│  Images ──→ Cell segmentation            │
+│                  │                       │
+│                  ▼                       │
+│          Cell boundaries                 │
+│                  │                       │
+│                  ▼                       │
+│  Transcripts ──→ Cell assignment         │
+│                  │                       │
+│                  ▼                       │
+│          Cell × gene matrix              │
+│                  │                       │
+│                  ├──→ Cell metadata       │
+│                  │                       │
+│  Images ─────────┴──→ Signal summaries   │
+│                                          │
+└──────────────────────┬───────────────────┘
+                       ▼
+                 Updated .vgz
 ```
 
 
