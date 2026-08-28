@@ -106,69 +106,97 @@ bash run.sh cellpose one <vgz-file-name>
 
 ## Rule inputs and outputs
 
+## Workflow rules
+
 ### `identify_cell_boundaries`
 
-**Input**
+**Purpose:** Identify cell boundaries from MERFISH imaging data using the selected segmentation algorithm.
 
-* `<path-to-raw-sample>/images/*.tif`
-* `<path-to-raw-samples>/images/micron_to_mosaic_pixel_transform.csv`
+This rule takes the raw MERFISH images and the micron-to-mosaic pixel transformation and runs the VizGen Post-processing Tool to generate cell boundary information. The workflow supports both watershed and Cellpose-based segmentation.
 
-**Output**
+**Inputs**
 
-* `<path-to-output-folder>/cellpose_micron_space.parquet`
-* `<path-to-output-folder>/cellpose_mosaic_space.parquet`
-* `<path-to-output-folder>/segmentation_specification.json`
-* `<path-to-output-folder>/results_tiles/0.parquet`
-* `<path-to-output-folder>/results_tiles/1.parquet`
-* `<path-to-output-folder>/results_tiles/2.parquet`
+* Raw MERFISH imaging data
+* Micron-to-mosaic pixel transformation file
+
+**Outputs**
+
+* Cell boundaries in micron space
+* Cell boundaries in mosaic space
+* Segmentation specification
+* Segmentation result tiles
+
+---
 
 ### `partition_transcripts_cells`
 
-**Input**
+**Purpose:** Assign detected transcripts to segmented cells and generate a cell-by-gene matrix.
 
-* `<path-to-raw-samples>/detected_transcripts.csv`
-* `<path-to-output-folder>/cellpose_micron_space.parquet`
+This rule combines the detected transcript locations with the cell boundaries generated during segmentation. Each transcript is assigned to the appropriate cell based on its spatial location.
 
-**Output**
+**Inputs**
 
-* `<path-to-output-folder>/cell_by_gene.csv`
-* `<path-to-output-folder>/detected_transcripts.csv`
+* Detected transcripts
+* Cell boundaries
+
+**Outputs**
+
+* Cell-by-gene expression matrix
+* Transcript-level cell assignments
+
+---
 
 ### `calc_cell_metadata`
 
-**Input**
+**Purpose:** Calculate metadata for each segmented cell.
 
-* `<path-to-output-folder>/cellpose_micron_space.parquet`
-* `<path-to-output-folder>/cell_by_gene.csv`
+This rule uses the cell boundaries and cell-by-gene matrix to derive cell-level metadata that can be used for downstream analysis and quality control.
 
-**Output**
+**Inputs**
 
-* `<path-to-output-folder>/cell_metadata.csv`
+* Cell boundaries
+* Cell-by-gene matrix
+
+**Outputs**
+
+* Cell metadata
+
+---
 
 ### `calc_cell_sum_signal`
 
-**Input**
+**Purpose:** Calculate the summed imaging signal associated with each segmented cell.
 
-* `<path-to-raw-sample>/images/*.tif`
-* `<path-to-raw-samples>/images/micron_to_mosaic_pixel_transform.csv`
-* `<path-to-output-folder>/cellpose_micron_space.parquet`
+This rule combines the original MERFISH images, spatial transformation information, and cell boundaries to quantify imaging signal within each cell.
 
-**Output**
+**Inputs**
 
-* `<path-to-output-folder>/sum_signal.csv`
+* Raw MERFISH imaging data
+* Micron-to-mosaic pixel transformation file
+* Cell boundaries
+
+**Outputs**
+
+* Cell-level summed signal
+
+---
 
 ### `update_vizgen`
 
-**Input**
+**Purpose:** Integrate the segmentation and cell-level analysis results back into the original VizGen dataset.
 
-* `<path-to-output-folder>/cellpose_micron_space.parquet`
-* `<path-to-output-folder>/cell_by_gene.csv`
-* `<path-to-output-folder>/cell_metadata.csv`
-* `<path-to-raw-sample>/<project_name>-vizgen-file.vgz`
+This final rule combines the original `.vgz` file with the generated cell boundaries, cell-by-gene matrix, and cell metadata to produce an updated VizGen dataset.
+
+**Inputs**
+
+* Original VizGen `.vgz` file
+* Cell boundaries
+* Cell-by-gene matrix
+* Cell metadata
 
 **Output**
 
-* `<path-to-output-folder>/yy-mm-dd_<project_name>_updated.vgz`
+* Updated `.vgz` file
 
 ## Output structure
 
