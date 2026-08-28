@@ -68,6 +68,7 @@ rule all:
 
 
 rule identify_cell_boundaries:
+    """ Identify cell boundaries from MERFISH imaging data using the selected segmentation algorithm """
     input:
         images=expand('{raw_data_path}/{dirnames}/images', raw_data_path=raw_data_path, dirnames=dirnames),
         transform_file=expand('{raw_data_path}/{dirnames}/images/micron_to_mosaic_pixel_transform.csv', raw_data_path=raw_data_path, dirnames=dirnames)
@@ -95,6 +96,7 @@ rule identify_cell_boundaries:
 
 
 rule partition_transcripts_cells:
+    """ Assign detected transcripts to segmented cells and generate a cell-by-gene matrix """
     input:
         micron = expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
         transcripts = expand("{raw_data_path}/{dirnames}/detected_transcripts.csv", raw_data_path=raw_data_path, dirnames=dirnames)
@@ -114,6 +116,7 @@ rule partition_transcripts_cells:
 
 
 rule calc_cell_metadata:
+    """ Calculate metadata for each segmented cell """
     input:
         micron = expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
         cell_by_gene = expand("{outpath}/{dirnames}/cell_by_gene.csv", outpath=outpath, dirnames=dirnames),
@@ -131,6 +134,7 @@ rule calc_cell_metadata:
 
 
 rule calc_cell_sum_signal:
+    """ Calculate the summed imaging signal associated with each segmented cell """
     input:
         images=expand('{raw_data_path}/{dirnames}/images', raw_data_path=raw_data_path, dirnames=dirnames),
         micron=expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
@@ -150,6 +154,7 @@ rule calc_cell_sum_signal:
 
 
 rule update_vizgen:
+    """ Integrate the segmentation and cell-level analysis results back into the original VizGen dataset """
     input:
         vzg=expand("{raw_data_path}/{dirnames}/{filename}", raw_data_path=raw_data_path, dirnames=dirnames, filename=config['file']),
         micron="{outpath}/{dirnames}/cellpose_micron_space.parquet",
