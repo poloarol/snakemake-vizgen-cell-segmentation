@@ -1,12 +1,13 @@
-project: "test-spatial"
+algorithm: "watershed"
+model: "three"
+file: ""
 data:
   input: "/data"
   output: "/data/output"
 algo:
   cp:
-    one: "../utils/cellpose_default_1_Zlevel.json"
-    two: "../utils/cellpose_default_3_Zlevel.json"
-    three: "../utils/cellpose_default_3_Zlevel_nuclei_only.json"
-  watershed: "../utils/watershed_default.json"
+    one: "utils/cellpose_default_1_Zlevel.json"
+    two: "utils/cellpose_default_3_Zlevel.json"
+    three: "utils/cellpose_default_3_Zlevel_nuclei_only.json"
+  watershed: "utils/watershed_default.json"
 threads: 32
-  # - img-vzg: '...'

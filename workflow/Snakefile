@@ -1,66 +1,83 @@
+import os
 
-from datetime import datetime
+raw_data_path = os.path.abspath(config["data"]["input"])
+output_root = os.path.abspath(config["data"]["output"])
+threads = int(config["threads"])
+algorithm_name = config["algorithm"]
+model = config["model"]
+input_vzg = config.get("file", "").strip()
 
-configfile: "../config/config.yml"
+if threads < 1:
+    raise ValueError("config['threads'] must be a positive integer")
 
-raw_data_path = config['data']['input']
+if algorithm_name == "watershed":
+    algorithm_file = config["algo"]["watershed"]
+    output_prefix = "watershed"
+    output_path = os.path.join(output_root, "watershed")
+elif algorithm_name == "cellpose":
+    if model not in {"one", "two", "three"}:
+        raise ValueError("Cellpose model must be one of: one, two, or three")
+    algorithm_file = config["algo"]["cp"][model]
+    output_prefix = "cellpose"
+    output_path = os.path.join(output_root, f"cellpose_{model}")
+else:
+    raise ValueError("algorithm must be either 'watershed' or 'cellpose'")
 
-dirnames = [name for name in os.listdir(raw_data_path) if not os.path.isfile(name) and "output" not in name]
+algorithm_file = os.path.abspath(algorithm_file)
+if not os.path.isfile(algorithm_file):
+    raise FileNotFoundError(f"Segmentation algorithm file not found: {algorithm_file}")
+
+if input_vzg and os.path.basename(input_vzg) != input_vzg:
+    raise ValueError("config['file'] must be a filename located in each sample directory")
+
+if not os.path.isdir(raw_data_path):
+    raise FileNotFoundError(f"Input directory does not exist: {raw_data_path}")
+
+sample_dirs = []
+for entry in os.scandir(raw_data_path):
+    if not entry.is_dir() or os.path.abspath(entry.path) == output_root:
+        continue
+    if os.path.isdir(os.path.join(entry.path, "images")):
+        sample_dirs.append(entry.name)
+
+sample_dirs.sort()
+if not sample_dirs:
+    raise ValueError(
+        f"No sample directories containing an images/ directory were found in {raw_data_path}"
+    )
+
+for sample in sample_dirs:
+    sample_path = os.path.join(raw_data_path, sample)
+    required_inputs = [
+        os.path.join(sample_path, "images", "micron_to_mosaic_pixel_transform.csv"),
+        os.path.join(sample_path, "detected_transcripts.csv"),
+    ]
+    missing_inputs = [path for path in required_inputs if not os.path.isfile(path)]
+    if missing_inputs:
+        raise FileNotFoundError(
+            f"Sample {sample!r} is missing required input(s): {', '.join(missing_inputs)}"
+        )
+    if input_vzg and not os.path.isfile(os.path.join(sample_path, input_vzg)):
+        raise FileNotFoundError(
+            f"Sample {sample!r} is missing the configured Vizgen file: {input_vzg}"
+        )
 
 segmentation_targets = []
-
-algorithm = ...
-outpath = ...
-
-
-if config['algorithm'] == 'watershed':
-    algorithm = config['algo']['watershed']
-else:
-    if config['model'] == 'one':
-        algorithm = config['algo']['cp']['one']
-    elif config['model'] == 'two':
-        algorithm = config['algo']['cp']['two']
-    else:
-        algorithm = config['algo']['cp']['three']
-
-
-project = config['project']
-
-if config['algorithm'] == 'cellpose':
-    outpath = f"{config['data']['output']}/cellpose_{config['model']}"
-else:
-    outpath = f"{config['data']['output']}/{config['algorithm']}"
-
-
-# Get the current date and time
-current_datetime = datetime.now()
-
-# Format the date and time as yearmonthday_hour_updated
-formatted_datetime = current_datetime.strftime("%Y%m%d_%H_%M_%S")
-
-
-for dirname in dirnames:
-    micron = expand("{outpath}/{dirname}/cellpose_micron_space.parquet", outpath=outpath, dirname=dirname)
-    mosaic = expand("{outpath}/{dirname}/cellpose_mosaic_space.parquet", outpath=outpath, dirname=dirname)
-    specs = expand("{outpath}/{dirname}/segmentation_specification.json", outpath=outpath, dirname=dirname)
-    tiles = expand("{outpath}/{dirname}/results_tiles/{num}.parquet", outpath=outpath, dirname=dirname, num=[0,1,2])
-    cell_gene = expand("{outpath}/{dirname}/cell_by_gene.csv", outpath=outpath, dirname=dirname)
-    detected_transcripts = expand("{outpath}/{dirname}/detected_transcripts.csv", outpath=outpath, dirname=dirname)
-    cell_metadata = expand("{outpath}/{dirname}/cell_metadata.csv", outpath=outpath, dirname=dirname)
-    sum_signals = expand("{outpath}/{dirname}/sum_signals.csv", outpath=outpath, dirname=dirname)
-    updated_vgz = expand("{outpath}/{dirname}/{formatted_datetime}_updated.vgz", outpath=outpath, dirname=dirname, formatted_datetime=formatted_datetime)
-
-    segmentation_targets.extend(micron)
-    segmentation_targets.extend(mosaic)
-    segmentation_targets.extend(specs)
-    # segmentation_targets.extend(tiles)
-    segmentation_targets.extend(cell_gene)
-    segmentation_targets.extend(detected_transcripts)
-    segmentation_targets.extend(cell_metadata)
-    segmentation_targets.extend(updated_vgz)
-
-
-# containerized: 'docker://vizgen-segmentation'
+for sample in sample_dirs:
+    sample_output = os.path.join(output_path, sample)
+    segmentation_targets.extend(
+        [
+            os.path.join(sample_output, f"{output_prefix}_micron_space.parquet"),
+            os.path.join(sample_output, f"{output_prefix}_mosaic_space.parquet"),
+            os.path.join(sample_output, "segmentation_specification.json"),
+            os.path.join(sample_output, "cell_by_gene.csv"),
+            os.path.join(sample_output, "detected_transcripts.csv"),
+            os.path.join(sample_output, "cell_metadata.csv"),
+            os.path.join(sample_output, "sum_signals.csv"),
+        ]
+    )
+    if input_vzg:
+        segmentation_targets.append(os.path.join(sample_output, "updated.vzg"))
 
 rule all:
     input:
@@ -68,109 +85,147 @@ rule all:
 
 
 rule identify_cell_boundaries:
-    """ Identify cell boundaries from MERFISH imaging data using the selected segmentation algorithm """
+    """Identify cell boundaries from MERFISH images using the selected algorithm."""
     input:
-        images=expand('{raw_data_path}/{dirnames}/images', raw_data_path=raw_data_path, dirnames=dirnames),
-        transform_file=expand('{raw_data_path}/{dirnames}/images/micron_to_mosaic_pixel_transform.csv', raw_data_path=raw_data_path, dirnames=dirnames)
+        images=lambda wildcards: os.path.join(raw_data_path, wildcards.sample, "images"),
+        transform=lambda wildcards: os.path.join(
+            raw_data_path,
+            wildcards.sample,
+            "images",
+            "micron_to_mosaic_pixel_transform.csv",
+        ),
     output:
-        micron = "{outpath}/{dirnames}/cellpose_micron_space.parquet",
-        mosaic = "{outpath}/{dirnames}/cellpose_mosaic_space.parquet",
-        specs =  "{outpath}/{dirnames}/segmentation_specification.json"
-        # tiles = dir("{outpath}/{dirnames}/results_tiles")
+        micron=os.path.join(
+            output_path, "{sample}", f"{output_prefix}_micron_space.parquet"
+        ),
+        mosaic=os.path.join(
+            output_path, "{sample}", f"{output_prefix}_mosaic_space.parquet"
+        ),
+        specs=os.path.join(output_path, "{sample}", "segmentation_specification.json"),
     params:
-        outdir = expand("{outpath}/{dirnames}", outpath=outpath, dirnames=dirnames),
-        algorithm = algorithm
-    threads: config['threads']
+        outdir=os.path.join(output_path, "{sample}"),
+        algorithm=algorithm_file,
+        image_pattern=os.path.join(
+            raw_data_path,
+            "{sample}",
+            "images",
+            r"mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif",
+        ),
+    threads:
+        threads
+    conda:
+        "envs/vpt.yml"
     shell:
-        '''
-        #!/bin/bash VPT
-
-        vpt --verbose --processes {threads} run-segmentation \
-            --segmentation-algorithm {params.algorithm}\
-            --input-images='{input.images}/mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif' \
-            --input-micron-to-mosaic {input.transform_file} \
-            --output-path {params.outdir} \
-            --tile-size 2400 \
+        """
+        vpt --verbose --processes {threads} run-segmentation \\
+            --segmentation-algorithm {params.algorithm:q} \\
+            --input-images {params.image_pattern:q} \\
+            --input-micron-to-mosaic {input.transform:q} \\
+            --output-path {params.outdir:q} \\
+            --tile-size 2400 \\
             --tile-overlap 200
-        '''
+        """
 
 
 rule partition_transcripts_cells:
-    """ Assign detected transcripts to segmented cells and generate a cell-by-gene matrix """
+    """Assign detected transcripts to segmented cells and create a cell-by-gene matrix."""
     input:
-        micron = expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
-        transcripts = expand("{raw_data_path}/{dirnames}/detected_transcripts.csv", raw_data_path=raw_data_path, dirnames=dirnames)
+        micron=os.path.join(
+            output_path, "{sample}", f"{output_prefix}_micron_space.parquet"
+        ),
+        transcripts=lambda wildcards: os.path.join(
+            raw_data_path, wildcards.sample, "detected_transcripts.csv"
+        ),
     output:
-        cell_by_gene = "{outpath}/{dirnames}/cell_by_gene.csv",
-        transcripts = "{outpath}/{dirnames}/detected_transcripts.csv"
+        cell_by_gene=os.path.join(output_path, "{sample}", "cell_by_gene.csv"),
+        transcripts=os.path.join(output_path, "{sample}", "detected_transcripts.csv"),
+    conda:
+        "envs/vpt.yml"
     shell:
-        '''
-        #!/bin/bash VPT
-
-        vpt --verbose partition-transcripts \
-            --input-boundaries {input.micron} \
-            --input-transcripts {input.transcripts} \
-            --output-entity-by-gene {output.cell_by_gene} \
-            --output-transcripts {output.transcripts}
-        '''
+        """
+        vpt --verbose partition-transcripts \\
+            --input-boundaries {input.micron:q} \\
+            --input-transcripts {input.transcripts:q} \\
+            --output-entity-by-gene {output.cell_by_gene:q} \\
+            --output-transcripts {output.transcripts:q}
+        """
 
 
 rule calc_cell_metadata:
-    """ Calculate metadata for each segmented cell """
+    """Calculate metadata for each segmented cell."""
     input:
-        micron = expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
-        cell_by_gene = expand("{outpath}/{dirnames}/cell_by_gene.csv", outpath=outpath, dirnames=dirnames),
+        micron=os.path.join(
+            output_path, "{sample}", f"{output_prefix}_micron_space.parquet"
+        ),
+        cell_by_gene=os.path.join(output_path, "{sample}", "cell_by_gene.csv"),
     output:
-        metadata = "{outpath}/{dirnames}/cell_metadata.csv",
+        metadata=os.path.join(output_path, "{sample}", "cell_metadata.csv"),
+    conda:
+        "envs/vpt.yml"
     shell:
-        '''
-        #!/bin/bash VPT
-
-        vpt --verbose derive-entity-metadata \
-            --input-boundaries {input.micron} \
-            --input-entity-by-gene {input.cell_by_gene} \
-            --output-metadata {output.metadata}
-        '''
+        """
+        vpt --verbose derive-entity-metadata \\
+            --input-boundaries {input.micron:q} \\
+            --input-entity-by-gene {input.cell_by_gene:q} \\
+            --output-metadata {output.metadata:q}
+        """
 
 
 rule calc_cell_sum_signal:
-    """ Calculate the summed imaging signal associated with each segmented cell """
+    """Calculate summed imaging signal associated with each segmented cell."""
     input:
-        images=expand('{raw_data_path}/{dirnames}/images', raw_data_path=raw_data_path, dirnames=dirnames),
-        micron=expand("{outpath}/{dirnames}/cellpose_micron_space.parquet", outpath=outpath, dirnames=dirnames),
-        transform_file=expand('{raw_data_path}/{dirnames}/images/micron_to_mosaic_pixel_transform.csv', raw_data_path=raw_data_path, dirnames=dirnames),
+        images=lambda wildcards: os.path.join(raw_data_path, wildcards.sample, "images"),
+        micron=os.path.join(
+            output_path, "{sample}", f"{output_prefix}_micron_space.parquet"
+        ),
+        transform=lambda wildcards: os.path.join(
+            raw_data_path,
+            wildcards.sample,
+            "images",
+            "micron_to_mosaic_pixel_transform.csv",
+        ),
     output:
-        signals = "{outpath}/{dirnames}/sum_signals.csv"
+        signals=os.path.join(output_path, "{sample}", "sum_signals.csv"),
+    params:
+        image_pattern=os.path.join(
+            raw_data_path,
+            "{sample}",
+            "images",
+            r"mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif",
+        ),
+    conda:
+        "envs/vpt.yml"
     shell:
-        '''
-        #!/bin/bash VPT
-        
-        vpt --verbose sum-signals \
-            --input-images='{input.images}/mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif' \
-            --input-boundaries {input.micron}, \
-            --input-micron-to-mosaic {input.transform_file} \
-            --output-csv {output.signals}
-        '''
+        """
+        vpt --verbose sum-signals \\
+            --input-images {params.image_pattern:q} \\
+            --input-boundaries {input.micron:q} \\
+            --input-micron-to-mosaic {input.transform:q} \\
+            --output-csv {output.signals:q}
+        """
 
 
 rule update_vizgen:
-    """ Integrate the segmentation and cell-level analysis results back into the original VizGen dataset """
+    """Integrate segmentation and cell-level results into the original Vizgen file."""
     input:
-        vzg=expand("{raw_data_path}/{dirnames}/{filename}", raw_data_path=raw_data_path, dirnames=dirnames, filename=config['file']),
-        micron="{outpath}/{dirnames}/cellpose_micron_space.parquet",
-        cell_by_gene="{outpath}/{dirnames}/cell_by_gene.csv",
-        metadata="{outpath}/{dirnames}/cell_metadata.csv"
+        vzg=lambda wildcards: os.path.join(raw_data_path, wildcards.sample, input_vzg),
+        micron=os.path.join(
+            output_path, "{sample}", f"{output_prefix}_micron_space.parquet"
+        ),
+        cell_by_gene=os.path.join(output_path, "{sample}", "cell_by_gene.csv"),
+        metadata=os.path.join(output_path, "{sample}", "cell_metadata.csv"),
     output:
-        vzg = "{outpath}/{dirnames}/{formatted_datetime}_updated.vgz"
-    threads: config['threads']
+        vzg=os.path.join(output_path, "{sample}", "updated.vzg"),
+    threads:
+        threads
+    conda:
+        "envs/vpt.yml"
     shell:
-        '''
-        #!/bin/bash VPT
-
-        vpt --verbose --processes {threads} update-vzg \
-            --input-vzg {input.vzg} \
-            --input-boundaries {input.micron} \
-            --input-entity-by-gene {input.cell_by_gene} \
-            --input-metadata {input.metadata} \
-            --output-vzg {output}
-        '''
+        """
+        vpt --verbose --processes {threads} update-vzg \\
+            --input-vzg {input.vzg:q} \\
+            --input-boundaries {input.micron:q} \\
+            --input-entity-by-gene {input.cell_by_gene:q} \\
+            --input-metadata {input.metadata:q} \\
+            --output-vzg {output.vzg:q}
+        """

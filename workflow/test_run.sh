@@ -1,7 +1,24 @@
-#!/bin/bash snakemake
+#!/usr/bin/env bash
+set -euo pipefail
 
-algorithm=$1
-model=$2
-vgz_file=$3
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+    echo "Usage: $0 <watershed|cellpose> <one|two|three> [vizgen-filename]" >&2
+    exit 2
+fi
 
-snakemake -n --config algorithm=${algorithm} model=${model} file=${vgz_file} --cores 1
+config_args=("algorithm=$1" "model=$2")
+if [[ $# -eq 3 ]]; then
+    config_args+=("file=$3")
+fi
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "$script_dir/.." && pwd)"
+
+cd "$repo_root"
+snakemake \
+    --snakefile workflow/Snakefile \
+    --configfile config/config.yml \
+    --software-deployment-method conda \
+    --cores 1 \
+    --dry-run \
+    --printshellcmds \
+    --config "${config_args[@]}"

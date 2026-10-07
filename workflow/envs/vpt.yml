@@ -1,0 +1,9 @@
+name: vizgen-vpt
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - vpt[watershed]==1.3.3
+      - vpt-plugin-cellpose2==1.0.1

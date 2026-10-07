@@ -3,8 +3,8 @@ from platform import python_version
 
 import snakemake
 
-print('A VPT/cellpose snakemake wrapper to assist in cell segmentation from Vizgen Spatial transcriptomics \n')
+print("A Snakemake workflow for cell segmentation of Vizgen spatial transcriptomics data.\n")
 
-print(f'- python: {python_version()}')
-print(f'- snakemake: {snakemake.__version__}')
-print('- Vizgen Preprocessing Tool (VPT) v1.1.2')
+print(f"- Python: {python_version()}")
+print(f"- Snakemake: {snakemake.__version__}")
+print("- VPT: 1.3.3 (installed in the workflow's isolated environment)")

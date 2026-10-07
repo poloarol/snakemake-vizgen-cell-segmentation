@@ -1,220 +1,116 @@
-# snakemake-vizgen-cell-segmentation
+# Snakemake Vizgen Cell Segmentation
 
-A Snakemake pipeline for performing cell segmentation on MERFISH spatial transcriptomics data.
+A Snakemake workflow for segmenting MERFISH data and regenerating cell-level outputs with the [Vizgen Post-processing Tool (VPT)](https://vizgen.github.io/vizgen-postprocessing/).
+
+## Requirements
+
+- Docker, or Conda/Mamba and Bash
+- The raw Vizgen data arranged as described below
+- Enough memory and disk space for the image tiles and intermediate outputs
+
+This workflow separates its software environments because the current Snakemake release requires Python 3.11+, while VPT and the Cellpose 2 plugin currently require Python 3.10 or older:
+
+- `environment.yml`: Python 3.11 and Snakemake 9.27.0
+- `workflow/envs/vpt.yml`: Python 3.10, VPT 1.3.3, and the Cellpose 2 plugin 1.0.1
+
+Snakemake creates the VPT environment for workflow rules. These versions are the latest releases compatible with the upstream Python requirements; VPT's plugin dependencies constrain some underlying scientific libraries to older versions.
+
+## Input data
+
+Set `data.input` in [config/config.yml](config/config.yml) to the directory containing one subdirectory per sample. Each sample directory must contain:
 
 ```text
-              CONFIGURATION
-                    │
-                    ▼
-          Select segmentation model
-                    │
-                    ▼
-┌──────────────────────────────────────────┐
-│              FOR EACH SAMPLE             │
-│                                          │
-│  Images ──→ Cell segmentation            │
-│                  │                       │
-│                  ▼                       │
-│          Cell boundaries                 │
-│                  │                       │
-│                  ▼                       │
-│  Transcripts ──→ Cell assignment         │
-│                  │                       │
-│                  ▼                       │
-│          Cell × gene matrix              │
-│                  │                       │
-│                  ├──→ Cell metadata       │
-│                  │                       │
-│  Images ─────────┴──→ Signal summaries   │
-│                                          │
-└──────────────────────┬───────────────────┘
-                       ▼
-                 Updated .vgz
+<sample>/
+├── images/
+│   ├── micron_to_mosaic_pixel_transform.csv
+│   └── mosaic_<stain>_z<index>.tif
+├── detected_transcripts.csv
+└── <optional Vizgen .vzg file>
 ```
 
+The workflow discovers sample directories containing `images/`, then checks for the required transform and transcript files. Place the output directory outside the sample directories; the default is `/data/output`.
 
-## Features
+## Configure and run
 
-This Snakemake pipeline is a wrapper around the [VizGen Post-processing Tool](https://vizgen.github.io/vizgen-postprocessing/index.html) for performing cell segmentation on MERFISH spatial transcriptomics data.
+The configuration file includes defaults for the input/output directories, watershed algorithm, Cellpose models, and thread count. Change the paths in `config/config.yml` for your data. To use a `.vzg` input, pass its filename; it must be present in each sample directory.
 
-## Build Docker image
+### Docker
 
-Build the Docker image:
+Build the image:
 
 ```bash
 docker build -t vizgen-segmentation .
 ```
 
-Test the Docker image:
+Run watershed segmentation and update each sample's `input.vzg`:
 
 ```bash
-docker run vizgen-segmentation
+docker run --rm \
+  -v "/path/to/data:/data" \
+  vizgen-segmentation \
+  --config algorithm=watershed model=three file=input.vzg
 ```
 
-Mount a local directory inside the Docker container:
+Use `--config algorithm=cellpose model=one` (or `two` or `three`) to select a Cellpose model. Omit `file=...` to produce the segmentation and cell-level tables without updating a `.vzg` file.
+
+### Conda/Mamba
+
+Create and activate the Snakemake environment:
 
 ```bash
-docker run --rm -it \
-    --entrypoint /bin/bash \
-    -v <path-to-folder>:<docker-folder-name> \
-    vizgen-segmentation
+mamba env create --file environment.yml
+mamba activate vizgen-snakemake
 ```
 
-## Run pipeline tests
-
-### Watershed segmentation
+From the repository root, run:
 
 ```bash
-bash run_test.sh watershed zero
+bash workflow/run.sh watershed three input.vzg
 ```
 
-### Cellpose segmentation
+For Cellpose, use `bash workflow/run.sh cellpose one input.vzg` (or `two` or `three`). The script runs the complete workflow, including signal summaries and the final `.vzg` update. Snakemake uses the per-rule Conda environment in `workflow/envs/vpt.yml`.
 
-Experimental nuclei-only model:
+To check the planned jobs without running them:
 
 ```bash
-bash run_test.sh cellpose three
+bash workflow/test_run.sh watershed three input.vzg
 ```
 
-## Run the pipeline with a desired VPT model
+Both scripts accept an algorithm and model; the Vizgen filename is optional. The model argument is ignored for watershed.
 
-### Watershed segmentation
+## Segmentation models
 
-```bash
-bash run.sh watershed zero <vgz-file-name>
-```
+| Algorithm | Model | Configuration |
+| --- | --- | --- |
+| `watershed` | `one`, `two`, or `three` (ignored) | `utils/watershed_default.json` |
+| `cellpose` | `one` | `utils/cellpose_default_1_Zlevel.json` |
+| `cellpose` | `two` | `utils/cellpose_default_3_Zlevel.json` |
+| `cellpose` | `three` | `utils/cellpose_default_3_Zlevel_nuclei_only.json` |
 
-### Cellpose segmentation
+## Workflow outputs
 
-Experimental nuclei-only model:
-
-```bash
-bash run.sh cellpose three <vgz-file-name>
-```
-
-Experimental cytoplasm model with nuclei Z3:
-
-```bash
-bash run.sh cellpose two <vgz-file-name>
-```
-
-Experimental cytoplasm model with nuclei Z3:
-
-```bash
-bash run.sh cellpose one <vgz-file-name>
-```
-
-## Rule inputs and outputs
-
-## Workflow rules
-
-### `identify_cell_boundaries`
-
-**Purpose:** Identify cell boundaries from MERFISH imaging data using the selected segmentation algorithm.
-
-This rule takes the raw MERFISH images and the micron-to-mosaic pixel transformation and runs the VizGen Post-processing Tool to generate cell boundary information. The workflow supports both watershed and Cellpose-based segmentation.
-
-**Inputs**
-
-* Raw MERFISH imaging data
-* Micron-to-mosaic pixel transformation file
-
-**Outputs**
-
-* Cell boundaries in micron space
-* Cell boundaries in mosaic space
-* Segmentation specification
-* Segmentation result tiles
-
----
-
-### `partition_transcripts_cells`
-
-**Purpose:** Assign detected transcripts to segmented cells and generate a cell-by-gene matrix.
-
-This rule combines the detected transcript locations with the cell boundaries generated during segmentation. Each transcript is assigned to the appropriate cell based on its spatial location.
-
-**Inputs**
-
-* Detected transcripts
-* Cell boundaries
-
-**Outputs**
-
-* Cell-by-gene expression matrix
-* Transcript-level cell assignments
-
----
-
-### `calc_cell_metadata`
-
-**Purpose:** Calculate metadata for each segmented cell.
-
-This rule uses the cell boundaries and cell-by-gene matrix to derive cell-level metadata that can be used for downstream analysis and quality control.
-
-**Inputs**
-
-* Cell boundaries
-* Cell-by-gene matrix
-
-**Outputs**
-
-* Cell metadata
-
----
-
-### `calc_cell_sum_signal`
-
-**Purpose:** Calculate the summed imaging signal associated with each segmented cell.
-
-This rule combines the original MERFISH images, spatial transformation information, and cell boundaries to quantify imaging signal within each cell.
-
-**Inputs**
-
-* Raw MERFISH imaging data
-* Micron-to-mosaic pixel transformation file
-* Cell boundaries
-
-**Outputs**
-
-* Cell-level summed signal
-
----
-
-### `update_vizgen`
-
-**Purpose:** Integrate the segmentation and cell-level analysis results back into the original VizGen dataset.
-
-This final rule combines the original `.vgz` file with the generated cell boundaries, cell-by-gene matrix, and cell metadata to produce an updated VizGen dataset.
-
-**Inputs**
-
-* Original VizGen `.vgz` file
-* Cell boundaries
-* Cell-by-gene matrix
-* Cell metadata
-
-**Output**
-
-* Updated `.vgz` file
-
-## Output structure
-
-The pipeline produces the following directory structure:
+For each sample, outputs are written under `<data.output>/<algorithm-or-model>/<sample>/`:
 
 ```text
-<path-to-output>/
-└── <sample-name>/
-    ├── results_tiles/
-    │   ├── 0.parquet
-    │   ├── 1.parquet
-    │   └── 2.parquet
-    ├── cellpose_micron_space.parquet
-    ├── cellpose_mosaic_space.parquet
+watershed/                         # or cellpose_one, cellpose_two, cellpose_three
+└── <sample>/
+    ├── watershed_micron_space.parquet
+    ├── watershed_mosaic_space.parquet
     ├── segmentation_specification.json
+    ├── result_tiles/
     ├── cell_by_gene.csv
     ├── detected_transcripts.csv
     ├── cell_metadata.csv
-    ├── sum_signal.csv
-    └── <yy_mm_dd_hh_mm_ss>_<project_name>_updated.vgz
+    ├── sum_signals.csv
+    └── updated.vzg                 # when a Vizgen filename is supplied
 ```
+
+Cellpose boundary files use the `cellpose_` prefix. The workflow targets the files produced by the selected segmentation configuration, and the stable `updated.vzg` filename lets Snakemake correctly determine when the update needs to be rerun.
+
+## Workflow steps
+
+1. `identify_cell_boundaries` runs the selected VPT segmentation algorithm.
+2. `partition_transcripts_cells` assigns transcripts to cells and creates the cell-by-gene matrix.
+3. `calc_cell_metadata` derives per-cell metadata.
+4. `calc_cell_sum_signal` measures image signal per cell.
+5. `update_vizgen` updates the input `.vzg` when a filename is supplied.

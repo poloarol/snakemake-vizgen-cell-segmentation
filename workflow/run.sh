@@ -1,25 +1,24 @@
-#!/bin/bash snakemake
+#!/usr/bin/env bash
+set -euo pipefail
 
-algorithm=$1
-model=$2
-vgz_file=$3
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+    echo "Usage: $0 <watershed|cellpose> <one|two|three> [vizgen-filename]" >&2
+    exit 2
+fi
 
-snakemake --config algorithm=${algorithm} model=${model} \
-    --cores 32 --latency-wait 600 \
-    --allowed-rules identify_cell_boundaries partition_transcripts_cells calc_cell_metadata \
-    2> output.vpt.part1.logs
+config_args=("algorithm=$1" "model=$2")
+if [[ $# -eq 3 ]]; then
+    config_args+=("file=$3")
+fi
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "$script_dir/.." && pwd)"
 
-
-sleep 30
-
-
-snakemake --config algorithm=${algorithm} model=${model} \
-    --cores 32 --latency-wait 600 \
-    --allowed-rules calc_cell_sum_signal 2> output.vpt.part2.logs
-
-
-sleep 30
-
-snakemake -n --config algorithm=${algorithm} model=${model} file=${vgz_file} \
-    --allowed-rules update_vizgen \
-    --cores 1
+cd "$repo_root"
+snakemake \
+    --snakefile workflow/Snakefile \
+    --configfile config/config.yml \
+    --software-deployment-method conda \
+    --cores "${THREADS:-32}" \
+    --rerun-incomplete \
+    --printshellcmds \
+    --config "${config_args[@]}"
