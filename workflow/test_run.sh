@@ -14,7 +14,18 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
 
 cd "$repo_root"
-snakemake \
+if command -v snakemake >/dev/null 2>&1; then
+    snakemake_cmd=(snakemake)
+elif [[ -x "$repo_root/env/Scripts/snakemake.exe" ]]; then
+    snakemake_cmd=("$repo_root/env/Scripts/snakemake.exe")
+elif [[ -x "$repo_root/env/bin/snakemake" ]]; then
+    snakemake_cmd=("$repo_root/env/bin/snakemake")
+else
+    echo "Snakemake was not found. Create and activate the vizgen-snakemake environment as described in README.md." >&2
+    exit 127
+fi
+
+"${snakemake_cmd[@]}" \
     --snakefile workflow/Snakefile \
     --configfile config/config.yml \
     --software-deployment-method conda \

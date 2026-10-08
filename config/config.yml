@@ -2,8 +2,8 @@ algorithm: "watershed"
 model: "three"
 file: ""
 data:
-  input: "/data"
-  output: "/data/output"
+  input: "data/202305010900"
+  output: "data/output"
 algo:
   cp:
     one: "utils/cellpose_default_1_Zlevel.json"

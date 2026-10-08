@@ -70,6 +70,8 @@ bash workflow/run.sh watershed three input.vzg
 
 For Cellpose, use `bash workflow/run.sh cellpose one input.vzg` (or `two` or `three`). The script runs the complete workflow, including signal summaries and the final `.vzg` update. Snakemake uses the per-rule Conda environment in `workflow/envs/vpt.yml`.
 
+The scripts use `snakemake` from the active environment, or fall back to a Snakemake executable in a repository-local `env/` virtual environment.
+
 To check the planned jobs without running them:
 
 ```bash
@@ -77,6 +79,14 @@ bash workflow/test_run.sh watershed three input.vzg
 ```
 
 Both scripts accept an algorithm and model; the Vizgen filename is optional. The model argument is ignored for watershed.
+
+Create a `samplesheet.csv` from the configured input directory and algorithm with:
+
+```bash
+python workflow/create_samplesheet.py
+```
+
+The sheet includes one row for each immediate sample directory containing `images/`. `path_to_sample` is relative to the repository when possible, and `cellpose_configuration` is blank for watershed runs. Override the defaults with `--config <path>` or `--output <path>`.
 
 ## Segmentation models
 

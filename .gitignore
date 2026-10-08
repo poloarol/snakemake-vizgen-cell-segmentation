@@ -1,2 +1,6 @@
 notes.txt
 ./utils/
+/.snakemake
+/data
+/samplesheet.csv
+/workflow/create_samplesheet.py
