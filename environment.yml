@@ -6,3 +6,4 @@ dependencies:
   - pip
   - pip:
       - snakemake==9.27.0
+      - snakemake-executor-plugin-slurm

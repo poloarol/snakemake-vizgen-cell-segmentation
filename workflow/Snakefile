@@ -1,28 +1,122 @@
+import csv
 import os
 
-raw_data_path = os.path.abspath(config["data"]["input"])
+repo_root = os.path.abspath(os.path.join(workflow.basedir, ".."))
 output_root = os.path.abspath(config["data"]["output"])
 threads = int(config["threads"])
-algorithm_name = config["algorithm"]
-model = config["model"]
+samplesheet_path = config.get("samplesheet", "").strip()
 input_vzg = config.get("file", "").strip()
 
 if threads < 1:
     raise ValueError("config['threads'] must be a positive integer")
 
+sample_paths = {}
+if samplesheet_path:
+    if not os.path.isabs(samplesheet_path):
+        samplesheet_path = os.path.join(repo_root, samplesheet_path)
+    samplesheet_path = os.path.abspath(samplesheet_path)
+    if not os.path.isfile(samplesheet_path):
+        raise FileNotFoundError(f"Samplesheet not found: {samplesheet_path}")
+    with open(samplesheet_path, newline="", encoding="utf-8") as samplesheet_file:
+        reader = csv.DictReader(samplesheet_file)
+        required_columns = {
+            "sample_name",
+            "path_to_sample",
+            "algorithm",
+            "cellpose_configuration",
+        }
+        if reader.fieldnames is None or not required_columns.issubset(reader.fieldnames):
+            raise ValueError(
+                "Samplesheet must contain columns: "
+                + ", ".join(sorted(required_columns))
+            )
+        sample_rows = list(reader)
+    if not sample_rows:
+        raise ValueError(f"Samplesheet contains no samples: {samplesheet_path}")
+    algorithm_names = {(row.get("algorithm") or "").strip() for row in sample_rows}
+    if len(algorithm_names) != 1 or "" in algorithm_names:
+        raise ValueError("All samplesheet rows must specify the same algorithm")
+    algorithm_name = algorithm_names.pop()
+    if algorithm_name not in {"watershed", "cellpose"}:
+        raise ValueError("Samplesheet algorithm must be either 'watershed' or 'cellpose'")
+
+    cellpose_configurations = {
+        (row.get("cellpose_configuration") or "").strip()
+        for row in sample_rows
+        if algorithm_name == "cellpose"
+    }
+    if algorithm_name == "cellpose":
+        if len(cellpose_configurations) != 1 or "" in cellpose_configurations:
+            raise ValueError(
+                "All cellpose samplesheet rows must specify the same cellpose_configuration"
+            )
+        algorithm_file = next(iter(cellpose_configurations))
+        model = None
+        for model_name, configured_file in config["algo"]["cp"].items():
+            configured_path = configured_file
+            if not os.path.isabs(configured_path):
+                configured_path = os.path.join(repo_root, configured_path)
+            sheet_path = algorithm_file
+            if not os.path.isabs(sheet_path):
+                sheet_path = os.path.join(repo_root, sheet_path)
+            if os.path.normcase(os.path.abspath(configured_path)) == os.path.normcase(
+                os.path.abspath(sheet_path)
+            ):
+                model = model_name
+                break
+        if model is None:
+            raise ValueError(
+                "Samplesheet cellpose_configuration must match one of the configured "
+                "Cellpose models"
+            )
+    else:
+        algorithm_file = config["algo"]["watershed"]
+        model = config["model"]
+
+    for row in sample_rows:
+        sample = (row.get("sample_name") or "").strip()
+        sample_path = (row.get("path_to_sample") or "").strip()
+        if not sample or not sample_path:
+            raise ValueError("Samplesheet sample_name and path_to_sample must not be empty")
+        if sample in {".", ".."} or os.path.basename(sample) != sample:
+            raise ValueError(f"Invalid sample_name in samplesheet: {sample}")
+        if sample in sample_paths:
+            raise ValueError(f"Duplicate sample_name in samplesheet: {sample}")
+        if not os.path.isabs(sample_path):
+            sample_path = os.path.join(repo_root, sample_path)
+        sample_path = os.path.abspath(sample_path)
+        if not os.path.isdir(sample_path):
+            raise FileNotFoundError(f"Sample directory not found: {sample_path}")
+        sample_paths[sample] = sample_path
+    sample_dirs = sorted(sample_paths)
+else:
+    raw_data_path = os.path.abspath(config["data"]["input"])
+    algorithm_name = config["algorithm"]
+    model = config["model"]
+
+def get_sample_path(sample):
+    if samplesheet_path:
+        return sample_paths[sample]
+    return os.path.join(raw_data_path, sample)
+
+
 if algorithm_name == "watershed":
-    algorithm_file = config["algo"]["watershed"]
+    if not samplesheet_path:
+        algorithm_file = config["algo"]["watershed"]
     output_prefix = "watershed"
     output_path = os.path.join(output_root, "watershed")
 elif algorithm_name == "cellpose":
-    if model not in {"one", "two", "three"}:
+    if not samplesheet_path and model not in {"one", "two", "three"}:
         raise ValueError("Cellpose model must be one of: one, two, or three")
-    algorithm_file = config["algo"]["cp"][model]
+    if not samplesheet_path:
+        algorithm_file = config["algo"]["cp"][model]
     output_prefix = "cellpose"
     output_path = os.path.join(output_root, f"cellpose_{model}")
 else:
     raise ValueError("algorithm must be either 'watershed' or 'cellpose'")
 
+if not os.path.isabs(algorithm_file):
+    algorithm_file = os.path.join(repo_root, algorithm_file)
 algorithm_file = os.path.abspath(algorithm_file)
 if not os.path.isfile(algorithm_file):
     raise FileNotFoundError(f"Segmentation algorithm file not found: {algorithm_file}")
@@ -30,24 +124,23 @@ if not os.path.isfile(algorithm_file):
 if input_vzg and os.path.basename(input_vzg) != input_vzg:
     raise ValueError("config['file'] must be a filename located in each sample directory")
 
-if not os.path.isdir(raw_data_path):
-    raise FileNotFoundError(f"Input directory does not exist: {raw_data_path}")
-
-sample_dirs = []
-for entry in os.scandir(raw_data_path):
-    if not entry.is_dir() or os.path.abspath(entry.path) == output_root:
-        continue
-    if os.path.isdir(os.path.join(entry.path, "images")):
-        sample_dirs.append(entry.name)
-
-sample_dirs.sort()
-if not sample_dirs:
-    raise ValueError(
-        f"No sample directories containing an images/ directory were found in {raw_data_path}"
-    )
+if not samplesheet_path:
+    if not os.path.isdir(raw_data_path):
+        raise FileNotFoundError(f"Input directory does not exist: {raw_data_path}")
+    sample_dirs = []
+    for entry in os.scandir(raw_data_path):
+        if not entry.is_dir() or os.path.abspath(entry.path) == output_root:
+            continue
+        if os.path.isdir(os.path.join(entry.path, "images")):
+            sample_dirs.append(entry.name)
+    sample_dirs.sort()
+    if not sample_dirs:
+        raise ValueError(
+            f"No sample directories containing an images/ directory were found in {raw_data_path}"
+        )
 
 for sample in sample_dirs:
-    sample_path = os.path.join(raw_data_path, sample)
+    sample_path = get_sample_path(sample)
     required_inputs = [
         os.path.join(sample_path, "images", "micron_to_mosaic_pixel_transform.csv"),
         os.path.join(sample_path, "detected_transcripts.csv"),
@@ -87,10 +180,9 @@ rule all:
 rule identify_cell_boundaries:
     """Identify cell boundaries from MERFISH images using the selected algorithm."""
     input:
-        images=lambda wildcards: os.path.join(raw_data_path, wildcards.sample, "images"),
+        images=lambda wildcards: os.path.join(get_sample_path(wildcards.sample), "images"),
         transform=lambda wildcards: os.path.join(
-            raw_data_path,
-            wildcards.sample,
+            get_sample_path(wildcards.sample),
             "images",
             "micron_to_mosaic_pixel_transform.csv",
         ),
@@ -105,9 +197,8 @@ rule identify_cell_boundaries:
     params:
         outdir=os.path.join(output_path, "{sample}"),
         algorithm=algorithm_file,
-        image_pattern=os.path.join(
-            raw_data_path,
-            "{sample}",
+        image_pattern=lambda wildcards: os.path.join(
+            get_sample_path(wildcards.sample),
             "images",
             r"mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif",
         ),
@@ -134,7 +225,8 @@ rule partition_transcripts_cells:
             output_path, "{sample}", f"{output_prefix}_micron_space.parquet"
         ),
         transcripts=lambda wildcards: os.path.join(
-            raw_data_path, wildcards.sample, "detected_transcripts.csv"
+            get_sample_path(wildcards.sample),
+            "detected_transcripts.csv",
         ),
     output:
         cell_by_gene=os.path.join(output_path, "{sample}", "cell_by_gene.csv"),
@@ -174,22 +266,20 @@ rule calc_cell_metadata:
 rule calc_cell_sum_signal:
     """Calculate summed imaging signal associated with each segmented cell."""
     input:
-        images=lambda wildcards: os.path.join(raw_data_path, wildcards.sample, "images"),
+        images=lambda wildcards: os.path.join(get_sample_path(wildcards.sample), "images"),
         micron=os.path.join(
             output_path, "{sample}", f"{output_prefix}_micron_space.parquet"
         ),
         transform=lambda wildcards: os.path.join(
-            raw_data_path,
-            wildcards.sample,
+            get_sample_path(wildcards.sample),
             "images",
             "micron_to_mosaic_pixel_transform.csv",
         ),
     output:
         signals=os.path.join(output_path, "{sample}", "sum_signals.csv"),
     params:
-        image_pattern=os.path.join(
-            raw_data_path,
-            "{sample}",
+        image_pattern=lambda wildcards: os.path.join(
+            get_sample_path(wildcards.sample),
             "images",
             r"mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif",
         ),
@@ -208,7 +298,7 @@ rule calc_cell_sum_signal:
 rule update_vizgen:
     """Integrate segmentation and cell-level results into the original Vizgen file."""
     input:
-        vzg=lambda wildcards: os.path.join(raw_data_path, wildcards.sample, input_vzg),
+        vzg=lambda wildcards: os.path.join(get_sample_path(wildcards.sample), input_vzg),
         micron=os.path.join(
             output_path, "{sample}", f"{output_prefix}_micron_space.parquet"
         ),

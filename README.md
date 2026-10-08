@@ -15,6 +15,8 @@ This workflow separates its software environments because the current Snakemake 
 
 Snakemake creates the VPT environment for workflow rules. These versions are the latest releases compatible with the upstream Python requirements; VPT's plugin dependencies constrain some underlying scientific libraries to older versions.
 
+The VPT environment build constrains setuptools below 82 because an upstream build script imports `pkg_resources`, which setuptools 82 and newer no longer provide. The workflow run script and Docker image apply this constraint automatically.
+
 ## Input data
 
 Set `data.input` in [config/config.yml](config/config.yml) to the directory containing one subdirectory per sample. Each sample directory must contain:
@@ -62,31 +64,90 @@ mamba env create --file environment.yml
 mamba activate vizgen-snakemake
 ```
 
-From the repository root, run:
+From the repository root, the default mode runs from the existing `samplesheet.csv`:
 
 ```bash
-bash workflow/run.sh watershed three input.vzg
+bash workflow/run.sh
 ```
 
-For Cellpose, use `bash workflow/run.sh cellpose one input.vzg` (or `two` or `three`). The script runs the complete workflow, including signal summaries and the final `.vzg` update. Snakemake uses the per-rule Conda environment in `workflow/envs/vpt.yml`.
+To make the mode explicit or use another sheet, pass `--samplesheet` and optionally its path. A Vizgen filename can follow the sheet path:
+
+```bash
+bash workflow/run.sh --samplesheet path/to/samplesheet.csv input.vzg
+```
+
+The samplesheet must include `sample_name`, `path_to_sample`, `algorithm`, and `cellpose_configuration` columns. Paths in `path_to_sample` are resolved relative to the repository root unless absolute. A single run must use the same algorithm and, for Cellpose, the same configured Cellpose model for every row. The script runs the complete workflow, including signal summaries and the final `.vzg` update when a filename is provided. Snakemake uses the per-rule Conda environment in `workflow/envs/vpt.yml`.
 
 The scripts use `snakemake` from the active environment, or fall back to a Snakemake executable in a repository-local `env/` virtual environment.
+
+### Slurm clusters
+
+The Snakemake environment includes the Slurm executor plugin. From a Slurm login node with the workflow and input/output filesystems available to compute nodes, submit jobs with a concurrency limit:
+
+```bash
+bash workflow/run.sh --slurm 20
+```
+
+This submits up to 20 jobs at a time from the default samplesheet. Samplesheet paths, a custom sheet, and the optional Vizgen filename work the same way:
+
+```bash
+bash workflow/run.sh --slurm 20 --samplesheet path/to/samplesheet.csv input.vzg
+```
+
+The original positional invocation is also supported with `--slurm`, for example `bash workflow/run.sh --slurm 20 watershed three`. `max-jobs` is the maximum number of jobs Snakemake may have running or submitted concurrently. The workflow uses `threads` in `config/config.yml` for CPU requests on the boundary-identification and VZG-update jobs; the Slurm scheduler's aggregate CPU limit defaults to `max-jobs * 32` to match the current `threads: 32` default. Set `SLURM_CPUS_PER_JOB` if you change that thread count. Use `--profile <path>` to apply cluster-specific settings such as account, partition, and default memory/runtime resources:
+
+```bash
+bash workflow/run.sh --slurm 20 --profile profiles/slurm
+```
+
+The `--slurm` mode uses Snakemake's Slurm executor, while ordinary invocations continue to run locally. Recreate the `vizgen-snakemake` environment after updating `environment.yml` to install the executor plugin.
 
 To check the planned jobs without running them:
 
 ```bash
-bash workflow/test_run.sh watershed three input.vzg
+bash workflow/test_run.sh
 ```
 
-Both scripts accept an algorithm and model; the Vizgen filename is optional. The model argument is ignored for watershed.
-
-Create a `samplesheet.csv` from the configured input directory and algorithm with:
+On a cluster, you can preview the Slurm plan and job limit without submitting anything:
 
 ```bash
-python workflow/create_samplesheet.py
+bash workflow/test_run.sh --slurm 20
 ```
 
-The sheet includes one row for each immediate sample directory containing `images/`. `path_to_sample` is relative to the repository when possible, and `cellpose_configuration` is blank for watershed runs. Override the defaults with `--config <path>` or `--output <path>`.
+This requires the Slurm executor plugin to be installed but does not submit jobs because the script always uses `--dry-run`. It accepts the same `--profile` option as the run script for checking cluster-specific configuration:
+
+```bash
+bash workflow/test_run.sh --slurm 20 --profile profiles/slurm
+```
+
+The dry-run script also accepts a custom samplesheet path and optional Vizgen filename in the same form:
+
+```bash
+bash workflow/test_run.sh --slurm 20 --samplesheet path/to/samplesheet.csv input.vzg
+```
+
+For compatibility, both scripts retain the original positional form, which discovers samples under `data.input` in `config/config.yml`:
+
+```bash
+bash workflow/run.sh watershed three input.vzg
+bash workflow/test_run.sh cellpose one
+```
+
+The positional form can also be combined with `--slurm` and `--profile`, for example `bash workflow/test_run.sh --slurm 20 watershed three`. The model argument is ignored for watershed, and the Vizgen filename is optional in either mode.
+
+Create a `samplesheet.csv` from the configured input directory for watershed with:
+
+```bash
+python workflow/create_samplesheet.py --algorithm watershed
+```
+
+For Cellpose, select the model while generating the sheet:
+
+```bash
+python workflow/create_samplesheet.py --algorithm cellpose --model three
+```
+
+The sheet includes one row for each immediate sample directory containing `images/`. `path_to_sample` is relative to the repository when possible, and `cellpose_configuration` is blank for watershed runs. Override the defaults with `--config <path>` or `--output <path>`. Review the generated sheet before launching the samplesheet-based run.
 
 ## Segmentation models
 

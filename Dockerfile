@@ -1,6 +1,7 @@
 FROM condaforge/miniforge3:latest
 
 WORKDIR /app
+ENV PIP_CONSTRAINT=/app/workflow/envs/pip-constraints.txt
 
 COPY environment.yml /tmp/environment.yml
 RUN mamba env create --file /tmp/environment.yml \
