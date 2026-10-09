@@ -8,14 +8,9 @@ A Snakemake workflow for segmenting MERFISH data and regenerating cell-level out
 - The raw Vizgen data arranged as described below
 - Enough memory and disk space for the image tiles and intermediate outputs
 
-This workflow separates its software environments because the current Snakemake release requires Python 3.11+, while VPT and the Cellpose 2 plugin currently require Python 3.10 or older:
+`environment.yml` creates a single Python 3.10 environment containing Snakemake 7.32.4 (the last release supporting Python 3.10), VPT, and the Cellpose 2 plugin, which currently requires Python 3.10 or older. The workflow rules run `vpt` directly from this environment; Snakemake does not create per-rule Conda environments (the `conda:` directives in the Snakefile are disabled).
 
-- `environment.yml`: Python 3.11 and Snakemake 9.27.0
-- `workflow/envs/vpt.yml`: Python 3.10, VPT 1.3.3, and the Cellpose 2 plugin 1.0.1
-
-Snakemake creates the VPT environment for workflow rules. These versions are the latest releases compatible with the upstream Python requirements; VPT's plugin dependencies constrain some underlying scientific libraries to older versions.
-
-The VPT environment build constrains setuptools below 82 because an upstream build script imports `pkg_resources`, which setuptools 82 and newer no longer provide. The workflow run script and Docker image apply this constraint automatically.
+The environment build constrains setuptools below 82 because an upstream build script imports `pkg_resources`, which setuptools 82 and newer no longer provide. The workflow run script and Docker image apply this constraint automatically.
 
 ## Input data
 
@@ -31,6 +26,8 @@ Set `data.input` in [config/config.yml](config/config.yml) to the directory cont
 ```
 
 The workflow discovers sample directories containing `images/`, then checks for the required transform and transcript files. Place the output directory outside the sample directories; the default is `/data/output`.
+
+A test dataset can be downloaded [[here](https://vizgen.com/vpt/)]
 
 ## Configure and run
 
@@ -76,13 +73,13 @@ To make the mode explicit or use another sheet, pass `--samplesheet` and optiona
 bash workflow/run.sh --samplesheet path/to/samplesheet.csv input.vzg
 ```
 
-The samplesheet must include `sample_name`, `path_to_sample`, `algorithm`, and `cellpose_configuration` columns. Paths in `path_to_sample` are resolved relative to the repository root unless absolute. A single run must use the same algorithm and, for Cellpose, the same configured Cellpose model for every row. The script runs the complete workflow, including signal summaries and the final `.vzg` update when a filename is provided. Snakemake uses the per-rule Conda environment in `workflow/envs/vpt.yml`.
+The samplesheet must include `sample_name`, `path_to_sample`, `algorithm`, and `cellpose_configuration` columns. Paths in `path_to_sample` are resolved relative to the repository root unless absolute. A single run must use the same algorithm and, for Cellpose, the same configured Cellpose model for every row. The script runs the complete workflow, including signal summaries and the final `.vzg` update when a filename is provided. Rule logs are written to `<output>/<sample>/logs/`.
 
 The scripts use `snakemake` from the active environment, or fall back to a Snakemake executable in a repository-local `env/` virtual environment.
 
 ### Slurm clusters
 
-The Snakemake environment includes the Slurm executor plugin. From a Slurm login node with the workflow and input/output filesystems available to compute nodes, submit jobs with a concurrency limit:
+The Snakemake environment uses Snakemake 7.32.4, the last release supporting Python 3.10 (needed by `vpt-plugin-cellpose2`), which includes built-in Slurm support. From a Slurm login node with the workflow and input/output filesystems available to compute nodes, submit jobs with a concurrency limit:
 
 ```bash
 bash workflow/run.sh --slurm 20
@@ -100,7 +97,7 @@ The original positional invocation is also supported with `--slurm`, for example
 bash workflow/run.sh --slurm 20 --profile profiles/slurm
 ```
 
-The `--slurm` mode uses Snakemake's Slurm executor, while ordinary invocations continue to run locally. Recreate the `vizgen-snakemake` environment after updating `environment.yml` to install the executor plugin.
+The `--slurm` mode uses Snakemake's built-in Slurm support, while ordinary invocations continue to run locally.
 
 To check the planned jobs without running them:
 
@@ -114,7 +111,7 @@ On a cluster, you can preview the Slurm plan and job limit without submitting an
 bash workflow/test_run.sh --slurm 20
 ```
 
-This requires the Slurm executor plugin to be installed but does not submit jobs because the script always uses `--dry-run`. It accepts the same `--profile` option as the run script for checking cluster-specific configuration:
+This requires Snakemake's Slurm support but does not submit jobs because the script always uses `--dry-run`. It accepts the same `--profile` option as the run script for checking cluster-specific configuration:
 
 ```bash
 bash workflow/test_run.sh --slurm 20 --profile profiles/slurm

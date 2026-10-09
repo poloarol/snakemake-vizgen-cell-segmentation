@@ -11,5 +11,5 @@ COPY config ./config
 COPY workflow ./workflow
 COPY utils ./utils
 
-ENTRYPOINT ["/opt/conda/envs/vizgen-snakemake/bin/snakemake", "--snakefile", "workflow/Snakefile", "--configfile", "config/config.yml", "--software-deployment-method", "conda"]
+ENTRYPOINT ["/opt/conda/envs/vizgen-snakemake/bin/snakemake", "--snakefile", "workflow/Snakefile", "--configfile", "config/config.yml"]
 CMD ["--cores", "32"]

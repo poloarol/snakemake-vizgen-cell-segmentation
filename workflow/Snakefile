@@ -170,7 +170,7 @@ for sample in sample_dirs:
         ]
     )
     if input_vzg:
-        segmentation_targets.append(os.path.join(sample_output, "updated.vzg"))
+        segmentation_targets.append(os.path.join(sample_output, input_vzg))
 
 rule all:
     input:
@@ -202,10 +202,12 @@ rule identify_cell_boundaries:
             "images",
             r"mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif",
         ),
+    log:
+        os.path.join(output_path, "{sample}", "logs", "identify_cell_boundaries.log"),
     threads:
         threads
-    conda:
-        "envs/vpt.yml"
+    # conda:
+    #     "envs/vpt.yml"
     shell:
         """
         vpt --verbose --processes {threads} run-segmentation \\
@@ -214,7 +216,7 @@ rule identify_cell_boundaries:
             --input-micron-to-mosaic {input.transform:q} \\
             --output-path {params.outdir:q} \\
             --tile-size 2400 \\
-            --tile-overlap 200
+            --tile-overlap 200 > {log:q} 2>&1
         """
 
 
@@ -231,15 +233,17 @@ rule partition_transcripts_cells:
     output:
         cell_by_gene=os.path.join(output_path, "{sample}", "cell_by_gene.csv"),
         transcripts=os.path.join(output_path, "{sample}", "detected_transcripts.csv"),
-    conda:
-        "envs/vpt.yml"
+    log:
+        os.path.join(output_path, "{sample}", "logs", "partition_transcripts_cells.log"),
+    # conda:
+    #     "envs/vpt.yml"
     shell:
         """
         vpt --verbose partition-transcripts \\
             --input-boundaries {input.micron:q} \\
             --input-transcripts {input.transcripts:q} \\
             --output-entity-by-gene {output.cell_by_gene:q} \\
-            --output-transcripts {output.transcripts:q}
+            --output-transcripts {output.transcripts:q} > {log:q} 2>&1
         """
 
 
@@ -252,14 +256,16 @@ rule calc_cell_metadata:
         cell_by_gene=os.path.join(output_path, "{sample}", "cell_by_gene.csv"),
     output:
         metadata=os.path.join(output_path, "{sample}", "cell_metadata.csv"),
-    conda:
-        "envs/vpt.yml"
+    log:
+        os.path.join(output_path, "{sample}", "logs", "calc_cell_metadata.log"),
+    # conda:
+    #     "envs/vpt.yml"
     shell:
         """
         vpt --verbose derive-entity-metadata \\
             --input-boundaries {input.micron:q} \\
             --input-entity-by-gene {input.cell_by_gene:q} \\
-            --output-metadata {output.metadata:q}
+            --output-metadata {output.metadata:q} > {log:q} 2>&1
         """
 
 
@@ -283,15 +289,17 @@ rule calc_cell_sum_signal:
             "images",
             r"mosaic_(?P<stain>[\w|-]+)_z(?P<z>[0-9]+).tif",
         ),
-    conda:
-        "envs/vpt.yml"
+    log:
+        os.path.join(output_path, "{sample}", "logs", "calc_cell_sum_signal.log"),
+    # conda:
+    #     "envs/vpt.yml"
     shell:
         """
         vpt --verbose sum-signals \\
             --input-images {params.image_pattern:q} \\
             --input-boundaries {input.micron:q} \\
             --input-micron-to-mosaic {input.transform:q} \\
-            --output-csv {output.signals:q}
+            --output-csv {output.signals:q} > {log:q} 2>&1
         """
 
 
@@ -305,11 +313,13 @@ rule update_vizgen:
         cell_by_gene=os.path.join(output_path, "{sample}", "cell_by_gene.csv"),
         metadata=os.path.join(output_path, "{sample}", "cell_metadata.csv"),
     output:
-        vzg=os.path.join(output_path, "{sample}", "updated.vzg"),
+        vzg=os.path.join(output_path, "{sample}", input_vzg),
+    log:
+        os.path.join(output_path, "{sample}", "logs", "update_vizgen.log"),
     threads:
         threads
-    conda:
-        "envs/vpt.yml"
+    # conda:
+    #     "envs/vpt.yml"
     shell:
         """
         vpt --verbose --processes {threads} update-vzg \\
@@ -317,5 +327,5 @@ rule update_vizgen:
             --input-boundaries {input.micron:q} \\
             --input-entity-by-gene {input.cell_by_gene:q} \\
             --input-metadata {input.metadata:q} \\
-            --output-vzg {output.vzg:q}
+            --output-vzg {output.vzg:q} > {log:q} 2>&1
         """

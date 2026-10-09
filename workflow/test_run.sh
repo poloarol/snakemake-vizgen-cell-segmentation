@@ -89,13 +89,12 @@ if [[ -n "$slurm_jobs" ]]; then
         exit 2
     fi
     slurm_cores=$((slurm_jobs * slurm_cpus_per_job))
-    execution_args=(--executor slurm --jobs "$slurm_jobs" --cores "$slurm_cores")
+    execution_args=(--slurm --jobs "$slurm_jobs" --cores "$slurm_cores")
 fi
 
 "${snakemake_cmd[@]}" \
     --snakefile workflow/Snakefile \
     --configfile config/config.yml \
-    --software-deployment-method conda \
     "${execution_args[@]}" \
     "${profile_args[@]}" \
     --dry-run \

@@ -2,8 +2,12 @@ name: vizgen-snakemake
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
+  - python=3.10
   - pip
   - pip:
-      - snakemake==9.27.0
-      - snakemake-executor-plugin-slurm
+      - snakemake==7.32.4
+      - pulp<2.8
+      - vpt
+      - vpt-plugin-cellpose2
+      - stardist
+      - tensorflow
